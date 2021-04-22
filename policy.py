@@ -11,9 +11,10 @@ class RandomPolicy(nn.Module):
     # a: return
     def forward(self, s):
         if self.name == 'SingleSeq':
-            return np.random.randint(0, self.w)
+            return torch.randint(0, self.w)
         else:
-            return np.random.randint(0, self.w, s.shape[1])
+            return torch.randint(0, self.w, (1, s.shape[1]))
+
 
 
 class RankNet(nn.Module):
@@ -36,7 +37,7 @@ class RankNet(nn.Module):
     # context: batch_size (by n) by w by (k * vocab_size) tensor
     # return q values
     def forward(self, context):
-        return self.net(context).squeeze()
+        return self.net(context).squeeze(-1)
 
 
 class WindowNet(nn.Module):

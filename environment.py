@@ -8,7 +8,10 @@ class SeqEnvironment:
         self.k = env_arg['kmer_size']
         self.l = env_arg['sequence_length']
         self.n = env_arg['num_sequence']
+        self.w_size = self.w + self.k - 1
+        self.n_window = self.l - self.w_size
         self.vocab = env_arg['sequence_vocab']
+        self.vocab_size = len(self.vocab)
         self.vocab_prob = env_arg['sequence_vocab_probability']
         self.seq_list = np.random.choice(len(self.vocab), (self.n, self.l), p=self.vocab_prob)
 
@@ -55,18 +58,27 @@ class MultiSeqEnvironment(SeqEnvironment):
     def __init__(self, env_arg):
         super(MultiSeqEnvironment, self).__init__(env_arg)
         self.loc = np.zeros((self.n, self.l))
+        self.dataset = self.generate_tensor_data(self.seq_list)
         self.curr_loc = 0
         self.state = self.get_window(self.curr_loc)
 
     def get_window(self, loc):
-        return self.seq_list[:, loc: loc + self.w + self.k - 1]
+        return self.dataset[:, loc]
+
+    def generate_tensor_data(self, seq_list):
+        dataset = torch.zeros(self.n, self.n_window, self.w, self.k * self.vocab_size)
+        for i in range(self.n):
+            for loc in range(self.n_window):
+                window = seq_list[i, loc: loc + self.w_size]
+                dataset[i, loc] = window_to_multihot(window, self.w, self.k, self.vocab_size)
+        return dataset
 
     # state is [n_seq by w by (k * vocab_size)]
     def reset(self, id=None):
         self.loc = np.zeros((self.n, self.l))
         self.curr_loc = 0
         self.state = self.get_window(self.curr_loc)
-        return windows_to_multihot(self.state, self.w, self.k, len(self.vocab))
+        return self.state
 
     # action is [n_seq]
     def step(self, action):
@@ -77,5 +89,4 @@ class MultiSeqEnvironment(SeqEnvironment):
             self.loc[i, new_loc[i]] = 1
         self.curr_loc += 1
         self.state = self.get_window(self.curr_loc)
-        self.state = windows_to_multihot(self.state, self.w, self.k, len(self.vocab))
-        return self.state, reward / self.n, int(self.curr_loc + self.w + self.k > self.l)
+        return self.state, reward / self.n, int(self.curr_loc >= self.n_window - 1)

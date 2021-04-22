@@ -1,6 +1,6 @@
 from util import *
 from policy import *
-
+from matplotlib import pyplot as plt
 
 class DQN_Agent:
     def __init__(self, env, policy, memory):
@@ -44,9 +44,9 @@ class DQN_Agent:
 
         print('Training DQN')
         total_rewards, mean_rewards = self.eval()
-        print(0, mean_rewards)
+        x = [0]
+        y = [mean_rewards]
         for epoch in range(n_epoch):
-            #print(epoch)
             self.policy.fit(self.memory, batch_size=batch_size, n_epoch=10)
             states, rewards, actions, next_states, terminates = self.simulate(self.policy)
             for i in range(len(states)):
@@ -56,3 +56,10 @@ class DQN_Agent:
             if (epoch + 1) % eval_interval == 0:
                 total_rewards, mean_rewards = self.eval()
                 print(epoch, mean_rewards)
+                x.append(epoch)
+                y.append(mean_rewards)
+                plt.figure()
+                plt.xlabel('No. epochs')
+                plt.ylabel('Density')
+                plt.plot(x, y)
+                plt.savefig('./rl_performance_10seq.png')

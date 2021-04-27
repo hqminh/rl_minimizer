@@ -7,6 +7,7 @@ from collections import deque
 from pprint import pprint
 import subprocess
 import sys, os
+import itertools
 
 # Return 1 by vocab_size
 def onehot(t, vocab_size=4):

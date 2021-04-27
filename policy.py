@@ -2,18 +2,14 @@ from util import *
 
 
 class RandomPolicy(nn.Module):
-    def __init__(self, w, name='SingleSeq'):
+    def __init__(self, w):
         super(RandomPolicy, self).__init__()
         self.w = w
-        self.name = name
 
     # s : batch size (by n) by w by (k * vocab)
     # a: return
     def forward(self, s):
-        if self.name == 'SingleSeq':
-            return torch.randint(0, self.w)
-        else:
-            return torch.randint(0, self.w, (1, s.shape[1]))
+        return torch.randint(0, self.w, (1, s.shape[1]))
 
 
 
@@ -31,7 +27,7 @@ class RankNet(nn.Module):
             nn.Linear(2 * self.hidden_dim, self.hidden_dim),
             nn.ReLU(),
             nn.Linear(self.hidden_dim, 1),
-            nn.Sigmoid()
+            #nn.Sigmoid()
         )
 
     # context: batch_size (by n) by w by (k * vocab_size) tensor
@@ -64,9 +60,8 @@ class WindowNet(nn.Module):
 
 
 class QNet(nn.Module):
-    def __init__(self, w, k, gamma=0.99, vocab_size=4, hidden_dim=100, env_name='SingleSeq'):
+    def __init__(self, w, k, gamma=0.99, vocab_size=4, hidden_dim=100):
         super(QNet, self).__init__()
-        self.env_name = env_name
         self.w = w
         self.k = k
         self.vocab_size = vocab_size
@@ -77,7 +72,7 @@ class QNet(nn.Module):
         self.q = RankNet(self.k, self.w, self.vocab_size, self.hidden_dim)
         self.q_target = RankNet(self.k, self.w, self.vocab_size, self.hidden_dim)
         self.clone_to_target()
-        self.opt = Adam(self.q.parameters(), lr=1e-5)
+        self.opt = Adam(self.q.parameters(), lr=2e-5)
 
     # context: batch_size (by n) by w by (k * vocab_size) tensor
     # return action: batch_size (by n)

@@ -27,15 +27,16 @@ class DQN_Agent:
         return states, rewards, actions, next_states, terminates
 
     def eval(self):
-        total_rewards = []
-        _, rewards, _, _, _ = self.simulate(self.policy, id=None)
-        tr = 1.0 - np.mean(rewards)
-        total_rewards.append(tr)
-        return total_rewards, np.mean(total_rewards)
+        density = []
+        _, _, _, _, _ = self.simulate(self.policy, id=None)
+        for i in range(self.env.loc.shape[0]):
+            density.append(torch.mean(self.env.loc[i]))
+
+        return density, np.mean(density)
 
     def train_qnet(self, n_epoch=1000, batch_size=32, sync_interval=10, eval_interval=10):
         # burn in
-        random_policy = RandomPolicy(self.env.w, self.env.name)
+        random_policy = RandomPolicy(self.env.w)
         print('Random Burn-in')
         while len(self.memory.buffer) < self.memory.burn_in:
             states, rewards, actions, next_states, terminates = self.simulate(random_policy)
@@ -44,8 +45,14 @@ class DQN_Agent:
 
         print('Training DQN')
         total_rewards, mean_rewards = self.eval()
-        x = [0]
-        y = [mean_rewards]
+        # x = [0]
+        # ys = [[density] for density in total_rewards]
+        # y = [mean_rewards]
+        x = []
+        ys = [[] for _ in total_rewards]
+        y = []
+        best_y = 1000
+        convergence_counter = 0
         for epoch in range(n_epoch):
             self.policy.fit(self.memory, batch_size=batch_size, n_epoch=10)
             states, rewards, actions, next_states, terminates = self.simulate(self.policy)
@@ -61,5 +68,16 @@ class DQN_Agent:
                 plt.figure()
                 plt.xlabel('No. epochs')
                 plt.ylabel('Density')
-                plt.plot(x, y)
-                plt.savefig('./rl_performance_10seq.png')
+                plt.plot(x, y, label='Average')
+                for j, density in enumerate(total_rewards):
+                    ys[j].append(density)
+                    plt.plot(x, ys[j], label=f'Seq {j+1}')
+                plt.legend()
+                plt.savefig('./rl_performance_10_hetero_seq_min_density_reward.png')
+                if mean_rewards < best_y:
+                    convergence_counter = 0
+                    best_y = mean_rewards
+                else:
+                    convergence_counter += 1
+            if convergence_counter == 20:
+                break

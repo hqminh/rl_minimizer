@@ -3,7 +3,6 @@ from util import *
 
 class SeqEnvironment:
     def __init__(self, env_arg):
-        self.name = env_arg['env_name']
         self.w = env_arg['window_size']
         self.k = env_arg['kmer_size']
         self.l = env_arg['sequence_length']
@@ -13,7 +12,11 @@ class SeqEnvironment:
         self.vocab = env_arg['sequence_vocab']
         self.vocab_size = len(self.vocab)
         self.vocab_prob = env_arg['sequence_vocab_probability']
-        self.seq_list = np.random.choice(len(self.vocab), (self.n, self.l), p=self.vocab_prob)
+        self.seq_list = [
+            torch.tensor(np.random.choice(len(self.vocab), (1, self.l), p=self.vocab_prob[i].numpy()))
+            for i in range(self.vocab_prob.shape[0])
+        ]
+        self.seq_list = torch.cat(self.seq_list)
 
     def reset(self):
         raise NotImplementedError
@@ -22,42 +25,10 @@ class SeqEnvironment:
         raise NotImplementedError
 
 
-class SingleSeqEnvironment(SeqEnvironment):
-    def __init__(self, env_arg):
-        super(SingleSeqEnvironment, self).__init__(env_arg)
-        self.curr_seq = self.seq_list[0]
-        self.loc = []
-        self.curr_loc = 0
-        self.state = self.get_window(self.curr_loc)
-
-    def get_window(self, loc):
-        return self.curr_seq[loc: loc + self.w + self.k - 1]
-
-    def reset(self, id=None):
-        id = np.random.randint(self.n) if id is None else id
-        self.curr_seq = self.seq_list[np.random.randint(id)]
-        self.loc = []
-        self.curr_loc = 0
-        self.state = self.get_window(self.curr_loc)
-        return window_to_multihot(self.state, self.w, self.k, len(self.vocab))
-
-    def step(self, action):
-        new_loc = self.curr_loc + action
-        if new_loc not in self.loc:
-            self.loc.append(self.curr_loc + action)
-            reward = 0
-        else:
-            reward = 1
-        self.curr_loc += 1
-        self.state = self.get_window(self.curr_loc)
-        self.state = window_to_multihot(self.state, self.w, self.k, len(self.vocab))
-        return self.state, reward, int(self.curr_loc + self.w + self.k > self.l)
-
-
 class MultiSeqEnvironment(SeqEnvironment):
     def __init__(self, env_arg):
         super(MultiSeqEnvironment, self).__init__(env_arg)
-        self.loc = np.zeros((self.n, self.l))
+        self.loc = torch.zeros((self.n, self.l))
         self.dataset = self.generate_tensor_data(self.seq_list)
         self.curr_loc = 0
         self.state = self.get_window(self.curr_loc)
@@ -75,7 +46,7 @@ class MultiSeqEnvironment(SeqEnvironment):
 
     # state is [n_seq by w by (k * vocab_size)]
     def reset(self, id=None):
-        self.loc = np.zeros((self.n, self.l))
+        self.loc = torch.zeros((self.n, self.l))
         self.curr_loc = 0
         self.state = self.get_window(self.curr_loc)
         return self.state
@@ -83,10 +54,10 @@ class MultiSeqEnvironment(SeqEnvironment):
     # action is [n_seq]
     def step(self, action):
         new_loc = self.curr_loc + action
-        reward = 0.0
+        reward = torch.zeros(new_loc.shape[0])
         for i in range(new_loc.shape[0]):
-            reward += self.loc[i, new_loc[i]]
+            reward[i] += self.loc[i, new_loc[i]]
             self.loc[i, new_loc[i]] = 1
         self.curr_loc += 1
         self.state = self.get_window(self.curr_loc)
-        return self.state, reward / self.n, int(self.curr_loc >= self.n_window - 1)
+        return self.state, torch.min(reward), int(self.curr_loc >= self.n_window - 1)

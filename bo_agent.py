@@ -7,6 +7,8 @@ from botorch.optim import optimize_acqf
 from policy import *
 from rembo import REMBO
 from matplotlib import pyplot as plt
+import seaborn as sns
+import operator
 
 class Simulator(nn.Module):
     def __init__(self, env_arg):
@@ -22,7 +24,11 @@ class Simulator(nn.Module):
         self.rank_net = RankNet(self.k, self.w, len(self.vocab), env_arg['hidden_dim'])
         self.rank_net_weight = self.rank_net.state_dict()
         self.rank_net_weight_tensor = ensure_not_1D(state_dict_to_tensor(self.rank_net_weight))
-        self.seq_list = np.random.choice(self.vocab_size , (self.n, self.l), p=self.vocab_prob)
+        self.seq_list = [
+            torch.tensor(np.random.choice(len(self.vocab), (1, self.l), p=self.vocab_prob[i].numpy()))
+            for i in range(self.vocab_prob.shape[0])
+        ]
+        self.seq_list = torch.cat(self.seq_list)
         self.seq_data = self.generate_tensor_data(self.seq_list)
         self.offset = torch.arange(self.n_window).repeat(self.n, 1)
 
@@ -47,7 +53,16 @@ class Simulator(nn.Module):
             density += torch.numel(torch.unique(rank[i])) / self.l
         return density / self.n
 
+    def rank_kmer(self, net_weight, all_kmer):
+        self.rank_net_weight_tensor = net_weight
+        tensor_to_state_dict(self.rank_net_weight_tensor, self.rank_net_weight)
+        self.rank_net.load_state_dict(self.rank_net_weight)
+        return self.rank_net(all_kmer)
+
+
 def main():
+    torch.manual_seed(2603)
+    np.random.seed(2603)
     env_arg = {
         'env_name': 'MultiSeq',
         'window_size': 7,
@@ -55,7 +70,8 @@ def main():
         'sequence_length': 1000,
         'num_sequence': 10,
         'sequence_vocab': ['A', 'T', 'G', 'C'],
-        'sequence_vocab_probability': [0.25, 0.25, 0.25, 0.25],
+        #'sequence_vocab_probability': torch.softmax(torch.randn((10, 4)), dim=1),
+        'sequence_vocab_probability': 0.25 * torch.ones((10, 4)),
         'hidden_dim': 50,
     }
     print('Generating Dataset')
@@ -65,7 +81,7 @@ def main():
     d_embedding = 10
     n_trials = 1250
     batch_size = 8
-    original_boundaries = np.array([[-1, 1]] * n_dims)
+    original_boundaries = np.array([[-5, 5]] * n_dims)
     print("original_boundaries.shape: {}".format(original_boundaries.shape))
     opt = REMBO(original_boundaries, d_embedding)
 
@@ -98,8 +114,62 @@ def main():
         plt.xlabel('No. queries')
         plt.ylabel('Best density')
         plt.plot(x, y)
-        plt.savefig('./bo_performance_10seq.png')
+        plt.savefig('./bo_performance_10_seq_55.png')
 
+def random_search():
+    torch.manual_seed(2603)
+    np.random.seed(2603)
+    env_arg = {
+        'env_name': 'MultiSeq',
+        'window_size': 7,
+        'kmer_size': 3,
+        'sequence_length': 10000,
+        'num_sequence': 1,
+        'sequence_vocab': ['0', '1'],
+        # 'sequence_vocab_probability': torch.softmax(torch.randn((10, 4)), dim=1),
+        'sequence_vocab_probability': 0.5 * torch.ones((1, 2)),
+        'hidden_dim': 50,
+    }
+
+    n_kmer = pow(len(env_arg['sequence_vocab']), env_arg['kmer_size'])
+    all_kmer = []
+    permutation_freq = {p:0 for p in list(itertools.permutations(np.arange(8), 8))}
+    permutation_density = {p: 0.0 for p in permutation_freq.keys()}
+    for i in range(n_kmer):
+        kmer = [int(d) for d in str(format(i, "03b"))]
+        all_kmer.append(kmer_to_multihot(kmer, vocab_size=2))
+    all_kmer = torch.stack(all_kmer)
+    print(all_kmer.shape, len(permutation_freq.keys()))
+
+    n_trials = 100000
+    sim = Simulator(env_arg)
+    n_dims = torch.numel(sim.rank_net_weight_tensor)
+    for i in range(n_trials):
+        weight = torch.randn(n_dims)
+        rank = list(sim.rank_kmer(weight, all_kmer).detach().numpy())
+        order = tuple(np.argsort(rank))
+        permutation_freq[order] += 1
+        permutation_density[order] += sim(weight)
+        print(i, order, permutation_freq[order], permutation_density[order]/permutation_freq[order])
+
+    x = np.arange(len(permutation_freq.keys()))
+    y = np.array(list(permutation_freq.values()), dtype=float)
+    z = np.array(list(permutation_density.values()), dtype=float)
+    z = np.divide(z, y, out=np.zeros_like(y), where=(y != 0))
+    fig, ax1 = plt.subplots()
+    ax2 = ax1.twinx()
+    ax1.scatter(x, y, color='blue')
+    ax2.scatter(x, z, color='red')
+    plt.savefig('./random_search_histogram.png')
+    plt.figure()
+    yz = zip(y, z)
+    yz = sorted(yz, key=operator.itemgetter(0))
+    yz = list(zip(*yz))
+    fig, ax1 = plt.subplots()
+    ax2 = ax1.twinx()
+    ax1.scatter(x, np.array(yz[0]), color='blue')
+    ax2.scatter(x, np.array(yz[1]), color='red')
+    plt.savefig('./random_search_histogram_sort.png')
 
 if __name__ == '__main__':
-    main()
+    random_search()

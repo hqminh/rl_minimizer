@@ -22,11 +22,12 @@ class RankNet(nn.Module):
         self.hidden_dim = hidden_dim
 
         self.net = nn.Sequential(
-            nn.Linear(self.k * self.vocab_size, 2 * self.hidden_dim),
-            nn.Tanh(),
-            nn.Linear(2 * self.hidden_dim, self.hidden_dim),
-            nn.ReLU(),
-            nn.Linear(self.hidden_dim, 1),
+            nn.Linear(self.k * self.vocab_size, 1),
+            #nn.Linear(self.k * self.vocab_size, 2 * self.hidden_dim),
+            # nn.Tanh(),
+            # nn.Linear(2 * self.hidden_dim, self.hidden_dim),
+            # nn.ReLU(),
+            # nn.Linear(self.hidden_dim, 1),
             #nn.Sigmoid()
         )
 
@@ -92,6 +93,7 @@ class QNet(nn.Module):
         mean_q_target = torch.mean(q_target, dim=1)
         mean_q_value = torch.mean(q_value, dim=1)
         loss = (rewards + self.gamma * mean_q_target - mean_q_value) ** 2
+        # loss = (1.0 - rewards) * (mean_q_target - mean_q_value) ** 2
         return torch.mean(loss, dim=0)
 
     def clone_to_target(self):

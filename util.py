@@ -8,6 +8,8 @@ from pprint import pprint
 import subprocess
 import sys, os
 import itertools
+from collections import deque
+from queue import Queue
 
 # Return 1 by vocab_size
 def onehot(t, vocab_size=4):

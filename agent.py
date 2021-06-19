@@ -16,7 +16,7 @@ class DQN_Agent:
         s = self.env.reset(id)
         terminate = False
         while not terminate:
-            a = policy(s.unsqueeze(0)).squeeze()
+            a = policy(s.unsqueeze(0)).view(-1)
             next_state, r, terminate = self.env.step(a)
             states.append(s)
             rewards.append(r)
@@ -73,11 +73,11 @@ class DQN_Agent:
                     ys[j].append(density)
                     plt.plot(x, ys[j], label=f'Seq {j+1}')
                 plt.legend()
-                plt.savefig('./rl_performance_10_hetero_seq_min_density_reward.png')
+                plt.savefig('./rl_performance_no_sigmoid_w14k6_large_h85.png')
                 if mean_rewards < best_y:
                     convergence_counter = 0
                     best_y = mean_rewards
                 else:
                     convergence_counter += 1
-            if convergence_counter == 20:
+            if convergence_counter == 200:
                 break

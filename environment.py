@@ -30,8 +30,10 @@ class MultiSeqEnvironment(SeqEnvironment):
         super(MultiSeqEnvironment, self).__init__(env_arg)
         self.loc = torch.zeros((self.n, self.l))
         self.dataset = self.generate_tensor_data(self.seq_list)
+        self.kmer_dataset = self.generate_kmer_data(self.seq_list)
         self.curr_loc = 0
         self.state = self.get_window(self.curr_loc)
+
 
     def get_window(self, loc):
         return self.dataset[:, loc]
@@ -43,6 +45,13 @@ class MultiSeqEnvironment(SeqEnvironment):
                 window = seq_list[i, loc: loc + self.w_size]
                 dataset[i, loc] = window_to_multihot(window, self.w, self.k, self.vocab_size)
         return dataset
+
+    def generate_kmer_data(self, seq_list):
+        kmer_dataset = []
+        for i in range(self.n):
+            for j in range(self.l - self.k + 1):
+                kmer_dataset.append(kmer_to_multihot([seq_list[i, j + t] for t in range(self.k)]))
+        return kmer_dataset
 
     # state is [n_seq by w by (k * vocab_size)]
     def reset(self, id=None):
@@ -60,4 +69,15 @@ class MultiSeqEnvironment(SeqEnvironment):
             self.loc[i, new_loc[i]] = 1
         self.curr_loc += 1
         self.state = self.get_window(self.curr_loc)
-        return self.state, torch.min(reward), int(self.curr_loc >= self.n_window - 1)
+        return self.state, torch.mean(reward), int(self.curr_loc >= self.n_window - 1)
+
+    def quick_step(self, policy):
+        kmer_score = dict()
+        for i in range(self.n):
+            curr_window = deque(maxlen=self.w)
+            for kmer in self.kmer_dataset:
+                if kmer not in kmer_score:
+                    kmer_score[kmer] = policy(kmer)
+                curr_window.append(kmer_score[kmer])
+
+

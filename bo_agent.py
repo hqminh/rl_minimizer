@@ -8,7 +8,7 @@ from policy import *
 from rembo import REMBO
 from matplotlib import pyplot as plt
 import seaborn as sns
-import operator
+import operator, pickle
 
 class Simulator(nn.Module):
     def __init__(self, env_arg):
@@ -37,6 +37,7 @@ class Simulator(nn.Module):
         dataset = torch.zeros(self.n, self.l - self.w - self.k + 1, self.w, self.k * self.vocab_size)
         for i in range(self.n):
             for loc in range(self.n_window):
+                print(loc)
                 window = seq_list[i, loc: loc + self.w + self.k - 1]
                 dataset[i, loc] = window_to_multihot(window, self.w, self.k, self.vocab_size)
         return dataset
@@ -64,11 +65,10 @@ def main():
     torch.manual_seed(2603)
     np.random.seed(2603)
     env_arg = {
-        'env_name': 'MultiSeq',
-        'window_size': 7,
-        'kmer_size': 3,
-        'sequence_length': 1000,
-        'num_sequence': 10,
+        'window_size': 14,
+        'kmer_size': 6,
+        'sequence_length': 1000000,
+        'num_sequence': 1,
         'sequence_vocab': ['A', 'T', 'G', 'C'],
         #'sequence_vocab_probability': torch.softmax(torch.randn((10, 4)), dim=1),
         'sequence_vocab_probability': 0.25 * torch.ones((10, 4)),
@@ -114,7 +114,7 @@ def main():
         plt.xlabel('No. queries')
         plt.ylabel('Best density')
         plt.plot(x, y)
-        plt.savefig('./bo_performance_10_seq_55.png')
+        plt.savefig('./bo_performance_1layer.png')
 
 def random_search():
     torch.manual_seed(2603)
@@ -144,9 +144,11 @@ def random_search():
     n_trials = 100000
     sim = Simulator(env_arg)
     n_dims = torch.numel(sim.rank_net_weight_tensor)
+    ranks = []
     for i in range(n_trials):
         weight = torch.randn(n_dims)
         rank = list(sim.rank_kmer(weight, all_kmer).detach().numpy())
+        ranks.append(rank)
         order = tuple(np.argsort(rank))
         permutation_freq[order] += 1
         permutation_density[order] += sim(weight)
@@ -156,15 +158,24 @@ def random_search():
     y = np.array(list(permutation_freq.values()), dtype=float)
     z = np.array(list(permutation_density.values()), dtype=float)
     z = np.divide(z, y, out=np.zeros_like(y), where=(y != 0))
+    result = {'x': x, 'y': y, 'z': z, 'rank': ranks}
+    pickle.dump(result, open('./binary_exp.pkl', 'wb'))
+
+    # PLOT
     fig, ax1 = plt.subplots()
     ax2 = ax1.twinx()
     ax1.scatter(x, y, color='blue')
     ax2.scatter(x, z, color='red')
     plt.savefig('./random_search_histogram.png')
     plt.figure()
-    yz = zip(y, z)
+
+    # PLOT SORTED
+    yz = zip(y, z, list(permutation_freq.keys()))
     yz = sorted(yz, key=operator.itemgetter(0))
     yz = list(zip(*yz))
+    n_top = 30
+    for i in range(n_top):
+        print(yz[0][-n_top + i], yz[1][-n_top + i], yz[2][--n_top + i])
     fig, ax1 = plt.subplots()
     ax2 = ax1.twinx()
     ax1.scatter(x, np.array(yz[0]), color='blue')
@@ -172,4 +183,4 @@ def random_search():
     plt.savefig('./random_search_histogram_sort.png')
 
 if __name__ == '__main__':
-    random_search()
+    main()
